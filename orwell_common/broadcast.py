@@ -16,9 +16,11 @@ class ServerGameDecoder(object):
         self._push_address = None
         self._subscribe_address = None
         self._reply_address = None
+        self._agent_address = None
         self._decoding_successful = False
 
     def decode(self, sender, data):
+        sender_ip, _ = sender
         # data (split on multiple lines for clarity):
         # 0xA0
         # size on 8 bytes
@@ -26,6 +28,12 @@ class ServerGameDecoder(object):
         # 0xA1
         # size on 8 bytes
         # Address of publisher
+        # 0xA2
+        # size on 8 bytes
+        # Address of replier
+        # 0xA3
+        # size on 8 bytes
+        # Address of agent
         # 0x00
         to_str = lambda x: x.decode("ascii")
         assert (data[0] == 0xa0)
@@ -45,8 +53,13 @@ class ServerGameDecoder(object):
         # print("replier_size =", str(replier_size))
         end_replier = end_publisher + 2 + replier_size
         replier_address = to_str(data[end_publisher + 2:end_replier])
-        # print("replier_address =", replier_address)
-        sender_ip, _ = sender
+        if 0xa3 == data[end_replier]:
+            agent_size = int(data[end_replier + 1])
+            # print("agent_size =", str(agent_size))
+            end_agent = end_replier + 2 + agent_size
+            agent_address = to_str(data[end_replier + 2:end_agent])
+            # print("agent_address =", agent_address)
+            self._agent_address = agent_address.replace('*', sender_ip)
         self._push_address = puller_address.replace('*', sender_ip)
         self._subscribe_address = publisher_address.replace('*', sender_ip)
         self._reply_address = replier_address.replace('*', sender_ip)
@@ -65,12 +78,19 @@ class ServerGameDecoder(object):
         return self._reply_address
 
     @property
+    def agent_address(self):
+        return self._agent_address
+
+    @property
     def success(self):
         return self._decoding_successful
 
     def __str__(self):
-        return "push = %s ; sub = %s ; rep = %s" % (
-            self._push_address, self._subscribe_address, self._reply_address)
+        return "push = %s ; sub = %s ; rep = %s ; agt = %s" % (
+            self._push_address,
+            self._subscribe_address,
+            self._reply_address,
+            self._agent_address)
 
 
 class ProxyDecoder(object):
@@ -118,11 +138,13 @@ class Broadcast(object):
         self._timeout = timeout
         self._build_socket()
         self._ips_pool = get_network_ips()
-        self._group = self._get_next_group()
+        LOGGER.debug("ips: %s", self._ips_pool)
+        self._group = None
         self._received = False
         self._data = None
         self._sender = None
         self._decoder = decoder
+        self._broadcast_version = "2"
         #self.send_all_broadcast_messages()
 
     def set_decoder(self, decoder):
@@ -146,6 +168,7 @@ class Broadcast(object):
         return group
 
     def send_all_broadcast_messages(self):
+        self._group = self._get_next_group()
         while True:
             tries = 0
             while (tries < self._retries) and (not self._received):
@@ -161,7 +184,7 @@ class Broadcast(object):
         try:
             LOGGER.debug("before sendto")
             sent = self._socket.sendto(
-                    "1".encode("ascii"), self._group)
+                    self._broadcast_version, self._group)
             LOGGER.debug("after sendto ; " + repr(sent))
             while not self._received:
                 try:
@@ -200,9 +223,9 @@ class AsyncBroadcast(Broadcast):
         self._ips_iterator = itertools.cycle(self._ips_pool)
 
     async def async_send_all_broadcast_messages(self):
+        self._group = self._get_group(next(self._ips_iterator))
         while True:
-            while not self._received:
-                await self.async_send_one_broadcast_message()
+            await self.async_send_one_broadcast_message()
             if self._received:
                 self.decode_data()
                 break
@@ -212,7 +235,7 @@ class AsyncBroadcast(Broadcast):
         try:
             LOGGER.debug("before sendto")
             sent = self._socket.sendto(
-                "1".encode("ascii"), self._group)
+                self._broadcast_version.encode("ascii"), self._group)
             LOGGER.debug("after sendto ; " + repr(sent))
             tries = 10
             while not self._received:
@@ -259,12 +282,19 @@ def main():
         function = sys.argv[1]
     else:
         function = "normal"
+    if argc > 2:
+        if "server_game" == sys.argv[2]:
+            decoder = ServerGameDecoder
+        else:
+            decoder = ProxyDecoder
+    else:
+        decoder = ProxyDecoder
     if "normal" == function:
-        broadcast = Broadcast(ProxyDecoder())
+        broadcast = Broadcast(decoder())
         broadcast.send_all_broadcast_messages()
         print(broadcast.decoder)
     elif "async" == function:
-        broadcast = AsyncBroadcast(ProxyDecoder())
+        broadcast = AsyncBroadcast(decoder())
         asyncio.run(broadcast.async_send_all_broadcast_messages())
         print(broadcast.decoder)
 
