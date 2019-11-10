@@ -168,6 +168,7 @@ class Broadcast(object):
         return group
 
     def send_all_broadcast_messages(self):
+        self._received = False
         self._group = self._get_next_group()
         while True:
             tries = 0
@@ -223,6 +224,7 @@ class AsyncBroadcast(Broadcast):
         self._ips_iterator = itertools.cycle(self._ips_pool)
 
     async def async_send_all_broadcast_messages(self):
+        self._received = False
         self._group = self._get_group(next(self._ips_iterator))
         while True:
             await self.async_send_one_broadcast_message()
