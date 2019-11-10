@@ -217,6 +217,11 @@ class Broadcast(object):
     def decoder(self, value):
         self._decoder = value
 
+    @property
+    def remote_address(self):
+        address, _ = self._sender
+        return address
+
 
 class AsyncBroadcast(Broadcast):
     def __init__(self, decoder, port=DEFAULT_PORT):
