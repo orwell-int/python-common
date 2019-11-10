@@ -1,0 +1,2 @@
+netifaces==0.10.9
+pyzmq>=17.1.2
