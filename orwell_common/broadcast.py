@@ -12,12 +12,17 @@ DEFAULT_PORT = 9080
 
 
 class ServerGameDecoder(object):
-    def __init__(self):
+    def __init__(self, *, version=2):
         self._push_address = None
         self._subscribe_address = None
         self._reply_address = None
         self._agent_address = None
         self._decoding_successful = False
+        self._version = version
+
+    @property
+    def version(self):
+        return self._version
 
     def decode(self, sender, data):
         sender_ip, _ = sender
@@ -60,6 +65,8 @@ class ServerGameDecoder(object):
             agent_address = to_str(data[end_replier + 2:end_agent])
             # print("agent_address =", agent_address)
             self._agent_address = agent_address.replace('*', sender_ip)
+        else:
+            assert(self.version < 2)
         self._push_address = puller_address.replace('*', sender_ip)
         self._subscribe_address = publisher_address.replace('*', sender_ip)
         self._reply_address = replier_address.replace('*', sender_ip)
@@ -94,9 +101,14 @@ class ServerGameDecoder(object):
 
 
 class ProxyRobotsDecoder(object):
-    def __init__(self):
+    def __init__(self, *, version="robot"):
         self._port = None
         self._decoding_successful = False
+        self._version = version
+
+    @property
+    def version(self):
+        return self._version
 
     def decode(self, sender, data):
         try:
@@ -147,8 +159,7 @@ class Broadcast(object):
         self._data = None
         self._sender = None
         self._decoder = decoder
-        self._broadcast_version = "2"
-        self._message = self._broadcast_version.encode("ascii")
+        self._message = str(self._decoder.version).encode("ascii")
 
     def set_decoder(self, decoder):
         self._decoder = decoder

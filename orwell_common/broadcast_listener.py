@@ -9,16 +9,33 @@ LOGGER = logging.getLogger(__name__)
 class BroadcastListener(threading.Thread):
     """
     """
-    def __init__(self, port=9081):
+
+    ADMIN = bytearray("admin", "ascii")
+    ROBOT = bytearray("robot", "ascii")
+
+    def __init__(self, port=9081, admin_port=9082):
         """
         """
         threading.Thread.__init__(self)
         self._socket_ports = []
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._socket.bind(('', port))
+        self._admin_port = admin_port
 
     def add_socket_port(self, socket_port):
         self._socket_ports.append(socket_port)
+
+    def _get_robot_port(self):
+        if self._socket_ports:
+            port = self._socket_ports.pop(0)
+            data = bytearray("{local_port}".format(local_port=port), "ascii")
+        else:
+            data = b"Goodbye"
+        return data
+
+    def _get_admin_port(self):
+        data = bytearray("{admin_port}".format(admin_port=self._admin_port), "ascii")
+        return data
 
     def run(self, max_loops=0):
         """
@@ -42,11 +59,14 @@ class BroadcastListener(threading.Thread):
                             "Received UDP broadcast '{message}' "
                             "from {address}".format(
                                 message=message, address=address))
-                    if self._socket_ports:
-                        port = self._socket_ports.pop(0)
-                        data = bytearray("{local_port}".format(local_port=port), "ascii")
+                    method = None
+                    if message.startswith(BroadcastListener.ADMIN):
+                        method = self._get_admin_port
+                    elif message.startswith(BroadcastListener.ROBOT):
+                        method = self._get_admin_port
                     else:
-                        data = b"Goodbye"
+                        method = self._get_robot_port
+                    data = method()
                     LOGGER.info("Try to send response to broadcast:{data}".format(data=data))
                     self._socket.sendto(data, address)
                 except socket.timeout:
