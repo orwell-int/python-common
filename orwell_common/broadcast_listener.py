@@ -59,7 +59,6 @@ class BroadcastListener(threading.Thread):
                             "Received UDP broadcast '{message}' "
                             "from {address}".format(
                                 message=message, address=address))
-                    method = None
                     if message.startswith(BroadcastListener.ADMIN):
                         method = self._get_admin_port
                     elif message.startswith(BroadcastListener.ROBOT):
@@ -67,8 +66,9 @@ class BroadcastListener(threading.Thread):
                     else:
                         method = self._get_robot_port
                     data = method()
-                    LOGGER.info("Try to send response to broadcast:{data}".format(data=data))
+                    LOGGER.info("Try to send response to broadcast: {data}".format(data=data))
                     self._socket.sendto(data, address)
+                    LOGGER.info("Success")
                 except socket.timeout:
                     LOGGER.info("Tried to send response but socket.timeout occurred")
                 except BlockingIOError:
