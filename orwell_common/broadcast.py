@@ -239,6 +239,20 @@ class Broadcast(object):
         return address
 
 
+async def send(sock, message, group):
+    LOGGER.debug("before sendto")
+    sent = sock.sendto(message, group)
+    LOGGER.debug("after sendto")
+    return sent
+
+
+async def recvfrom(sock, size):
+    LOGGER.debug("before recvfrom")
+    data, sender = sock.recvfrom(size)
+    LOGGER.debug("after recvfrom")
+    return data, sender
+
+
 class AsyncBroadcast(Broadcast):
     def __init__(self, decoder, port=DEFAULT_PORT):
         super().__init__(decoder, port, 0, 0)
@@ -257,16 +271,20 @@ class AsyncBroadcast(Broadcast):
     async def async_send_one_broadcast_message(self):
         try:
             LOGGER.debug("before sendto")
-            sent = self._socket.sendto(self._message, self._group)
+            task = asyncio.create_task(send(self._socket, self._message, self._group))
+            await task
+            sent = task.result()
             LOGGER.debug("after sendto ; " + repr(sent))
             tries = 10
             while not self._received:
                 try:
-                    self._data, self._sender = self._socket.recvfrom(
-                        self._size)
+                    task = asyncio.create_task(recvfrom(self._socket, self._size))
+                    await task
+                    self._data, self._sender = task.result()
                     self._received = True
                 except BlockingIOError as ex:
-                    LOGGER.warning(str(ex))
+                    pass
+                if not self._received:
                     tries -= 1
                     if tries <= 0:
                         LOGGER.info("Failed to contact %s", self._group)
