@@ -113,6 +113,9 @@ class ProxyRobotsDecoder(object):
     def __str__(self):
         return "port = %s" % (self._port,)
 
+    @property
+    def port(self):
+        return self._port
 
 def get_network_ips():
     results = []
