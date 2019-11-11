@@ -173,8 +173,11 @@ class Broadcast(object):
             socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
 
     def _get_next_group(self):
-        broadcast = self._ips_pool.pop()
-        return self._get_group(broadcast)
+        if self._ips_pool:
+            broadcast = self._ips_pool.pop()
+            return self._get_group(broadcast)
+        else:
+            return None
 
     def _get_group(self, ip):
         group = ip, self._port
@@ -184,7 +187,7 @@ class Broadcast(object):
     def send_all_broadcast_messages(self):
         self._received = False
         self._group = self._get_next_group()
-        while True:
+        while self._group:
             tries = 0
             while (tries < self._retries) and (not self._received):
                 tries += 1
