@@ -93,7 +93,7 @@ class ServerGameDecoder(object):
             self._agent_address)
 
 
-class ProxyDecoder(object):
+class ProxyRobotsDecoder(object):
     def __init__(self):
         self._port = None
         self._decoding_successful = False
@@ -145,7 +145,7 @@ class Broadcast(object):
         self._sender = None
         self._decoder = decoder
         self._broadcast_version = "2"
-        #self.send_all_broadcast_messages()
+        self._message = self._broadcast_version.encode("ascii")
 
     def set_decoder(self, decoder):
         self._decoder = decoder
@@ -184,8 +184,7 @@ class Broadcast(object):
     def send_one_broadcast_message(self):
         try:
             LOGGER.debug("before sendto")
-            sent = self._socket.sendto(
-                    self._broadcast_version, self._group)
+            sent = self._socket.sendto(self._message, self._group)
             LOGGER.debug("after sendto ; " + repr(sent))
             while not self._received:
                 try:
@@ -241,8 +240,7 @@ class AsyncBroadcast(Broadcast):
     async def async_send_one_broadcast_message(self):
         try:
             LOGGER.debug("before sendto")
-            sent = self._socket.sendto(
-                self._broadcast_version.encode("ascii"), self._group)
+            sent = self._socket.sendto(self._message, self._group)
             LOGGER.debug("after sendto ; " + repr(sent))
             tries = 10
             while not self._received:
@@ -293,9 +291,9 @@ def main():
         if "server_game" == sys.argv[2]:
             decoder = ServerGameDecoder
         else:
-            decoder = ProxyDecoder
+            decoder = ProxyRobotsDecoder
     else:
-        decoder = ProxyDecoder
+        decoder = ProxyRobotsDecoder
     if "normal" == function:
         broadcast = Broadcast(decoder())
         broadcast.send_all_broadcast_messages()
