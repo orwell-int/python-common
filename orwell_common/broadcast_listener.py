@@ -62,7 +62,7 @@ class BroadcastListener(threading.Thread):
                     if message.startswith(BroadcastListener.ADMIN):
                         method = self._get_admin_port
                     elif message.startswith(BroadcastListener.ROBOT):
-                        method = self._get_admin_port
+                        method = self._get_robot_port
                     else:
                         method = self._get_robot_port
                     data = method()
