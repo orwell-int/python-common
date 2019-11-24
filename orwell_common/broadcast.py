@@ -12,12 +12,17 @@ DEFAULT_PORT = 9080
 
 
 class ServerGameDecoder(object):
-    def __init__(self):
+    def __init__(self, *, version=2):
         self._push_address = None
         self._subscribe_address = None
         self._reply_address = None
         self._agent_address = None
         self._decoding_successful = False
+        self._version = version
+
+    @property
+    def version(self):
+        return self._version
 
     def decode(self, sender, data):
         sender_ip, _ = sender
@@ -60,6 +65,8 @@ class ServerGameDecoder(object):
             agent_address = to_str(data[end_replier + 2:end_agent])
             # print("agent_address =", agent_address)
             self._agent_address = agent_address.replace('*', sender_ip)
+        else:
+            assert(self.version < 2)
         self._push_address = puller_address.replace('*', sender_ip)
         self._subscribe_address = publisher_address.replace('*', sender_ip)
         self._reply_address = replier_address.replace('*', sender_ip)
@@ -93,10 +100,15 @@ class ServerGameDecoder(object):
             self._agent_address)
 
 
-class ProxyDecoder(object):
-    def __init__(self):
+class ProxyRobotsDecoder(object):
+    def __init__(self, *, version="robot"):
         self._port = None
         self._decoding_successful = False
+        self._version = version
+
+    @property
+    def version(self):
+        return self._version
 
     def decode(self, sender, data):
         try:
@@ -113,6 +125,9 @@ class ProxyDecoder(object):
     def __str__(self):
         return "port = %s" % (self._port,)
 
+    @property
+    def port(self):
+        return self._port
 
 def get_network_ips():
     results = []
@@ -144,8 +159,7 @@ class Broadcast(object):
         self._data = None
         self._sender = None
         self._decoder = decoder
-        self._broadcast_version = "2"
-        #self.send_all_broadcast_messages()
+        self._message = str(self._decoder.version).encode("ascii")
 
     def set_decoder(self, decoder):
         self._decoder = decoder
@@ -159,8 +173,11 @@ class Broadcast(object):
             socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
 
     def _get_next_group(self):
-        broadcast = self._ips_pool.pop()
-        return self._get_group(broadcast)
+        if self._ips_pool:
+            broadcast = self._ips_pool.pop()
+            return self._get_group(broadcast)
+        else:
+            return None
 
     def _get_group(self, ip):
         group = ip, self._port
@@ -170,7 +187,7 @@ class Broadcast(object):
     def send_all_broadcast_messages(self):
         self._received = False
         self._group = self._get_next_group()
-        while True:
+        while self._group:
             tries = 0
             while (tries < self._retries) and (not self._received):
                 tries += 1
@@ -184,8 +201,7 @@ class Broadcast(object):
     def send_one_broadcast_message(self):
         try:
             LOGGER.debug("before sendto")
-            sent = self._socket.sendto(
-                    self._broadcast_version, self._group)
+            sent = self._socket.sendto(self._message, self._group)
             LOGGER.debug("after sendto ; " + repr(sent))
             while not self._received:
                 try:
@@ -223,6 +239,20 @@ class Broadcast(object):
         return address
 
 
+async def send(sock, message, group):
+    LOGGER.debug("before sendto")
+    sent = sock.sendto(message, group)
+    LOGGER.debug("after sendto")
+    return sent
+
+
+async def recvfrom(sock, size):
+    LOGGER.debug("before recvfrom")
+    data, sender = sock.recvfrom(size)
+    LOGGER.debug("after recvfrom")
+    return data, sender
+
+
 class AsyncBroadcast(Broadcast):
     def __init__(self, decoder, port=DEFAULT_PORT):
         super().__init__(decoder, port, 0, 0)
@@ -241,17 +271,20 @@ class AsyncBroadcast(Broadcast):
     async def async_send_one_broadcast_message(self):
         try:
             LOGGER.debug("before sendto")
-            sent = self._socket.sendto(
-                self._broadcast_version.encode("ascii"), self._group)
+            task = asyncio.create_task(send(self._socket, self._message, self._group))
+            await task
+            sent = task.result()
             LOGGER.debug("after sendto ; " + repr(sent))
             tries = 10
             while not self._received:
                 try:
-                    self._data, self._sender = self._socket.recvfrom(
-                        self._size)
+                    task = asyncio.create_task(recvfrom(self._socket, self._size))
+                    await task
+                    self._data, self._sender = task.result()
                     self._received = True
                 except BlockingIOError as ex:
-                    LOGGER.warning(str(ex))
+                    pass
+                if not self._received:
                     tries -= 1
                     if tries <= 0:
                         LOGGER.info("Failed to contact %s", self._group)
@@ -293,9 +326,9 @@ def main():
         if "server_game" == sys.argv[2]:
             decoder = ServerGameDecoder
         else:
-            decoder = ProxyDecoder
+            decoder = ProxyRobotsDecoder
     else:
-        decoder = ProxyDecoder
+        decoder = ProxyRobotsDecoder
     if "normal" == function:
         broadcast = Broadcast(decoder())
         broadcast.send_all_broadcast_messages()
