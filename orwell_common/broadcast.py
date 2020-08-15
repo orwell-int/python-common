@@ -72,6 +72,9 @@ class ServerGameDecoder(object):
         self._reply_address = replier_address.replace('*', sender_ip)
         self._decoding_successful = True
 
+    def reset(self):
+        self._decoding_successful = False
+
     @property
     def push_address(self):
         return self._push_address
@@ -118,6 +121,9 @@ class ProxyRobotsDecoder(object):
             LOGGER.warning("Could not decode broadcast message: " + repr(data))
             LOGGER.warning(str(ex))
 
+    def reset(self):
+        self._decoding_successful = False
+
     @property
     def success(self):
         return self._decoding_successful
@@ -128,6 +134,7 @@ class ProxyRobotsDecoder(object):
     @property
     def port(self):
         return self._port
+
 
 def get_network_ips():
     results = []
@@ -155,6 +162,7 @@ class Broadcast(object):
         self._ips_pool = get_network_ips()
         LOGGER.debug("ips: %s", self._ips_pool)
         self._group = None
+        self._found_group = None
         self._received = False
         self._data = None
         self._sender = None
@@ -172,7 +180,9 @@ class Broadcast(object):
         self._socket.setsockopt(
             socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
 
-    def _get_next_group(self):
+    def _get_next_group(self, force_group=None):
+        if force_group is not None:
+            return force_group
         if self._ips_pool:
             broadcast = self._ips_pool.pop()
             return self._get_group(broadcast)
@@ -185,40 +195,53 @@ class Broadcast(object):
         return group
 
     def send_all_broadcast_messages(self):
+        self.reset()
         self._received = False
-        self._group = self._get_next_group()
+        self._group = self._get_next_group(self._found_group)
         while self._group:
             tries = 0
             while (tries < self._retries) and (not self._received):
                 tries += 1
-                LOGGER.debug("Try " + str(tries))
+                LOGGER.debug("Try " + str(tries) + " group: " + str(self._group))
                 self.send_one_broadcast_message()
             if self._received:
+                self._found_group = self._group
                 self.decode_data()
                 break
             self._group = self._get_next_group()
 
-    def send_one_broadcast_message(self):
+    def reset(self):
+        self._ips_pool = get_network_ips()
+
+    def send_one_broadcast_message(self, silent=False):
+        self._decoder.reset()
+        self._received = False
         try:
-            LOGGER.debug("before sendto")
+            if not silent:
+                LOGGER.debug("before sendto")
             sent = self._socket.sendto(self._message, self._group)
-            LOGGER.debug("after sendto ; " + repr(sent))
+            if not silent:
+                LOGGER.debug("after sendto ; " + repr(sent))
             while not self._received:
                 try:
                     self._data, self._sender = self._socket.recvfrom(
                             self._size)
                     self._received = True
                 except socket.timeout:
-                    LOGGER.warning('timed out, no more responses')
+                    if not silent:
+                        LOGGER.warning('timed out, no more responses')
                     break
                 else:
-                    LOGGER.info(
-                        'received "%s" from %s'
-                        % (repr(self._data), self._sender))
+                    if not silent:
+                        LOGGER.info(
+                            'received "%s" from %s'
+                            % (repr(self._data), self._sender))
         finally:
-            LOGGER.info('closing socket')
+            if not silent:
+                LOGGER.info('closing socket')
             self._socket.close()
             self._build_socket()
+        return self._received
 
     def decode_data(self):
         if not self._decoder:
