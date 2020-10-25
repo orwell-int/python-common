@@ -1,12 +1,13 @@
-from __future__ import print_function
-import socket
-import struct
-import logging
-import netifaces
 import asyncio
 import itertools
+import logging
+import netifaces
+import socket
+import struct
 
-LOGGER = logging.getLogger(__name__)
+import orwell_common.logging
+
+LOGGER = logging.getLogger(__name__.replace("orwell_common", "orwell.common"))
 
 DEFAULT_PORT = 9080
 
@@ -323,22 +324,8 @@ class AsyncBroadcast(Broadcast):
             self._build_socket()
 
 
-def configure_logging(verbose=False):
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-            '%(asctime)s %(name)-12s %(levelname)-8s '
-            '%(filename)s %(lineno)d %(message)s')
-    handler.setFormatter(formatter)
-    LOGGER.addHandler(handler)
-    if verbose:
-        LOGGER.setLevel(logging.DEBUG)
-    else:
-        LOGGER.setLevel(logging.INFO)
-    LOGGER.debug("configure_logging - done")
-
-
 def main():
-    configure_logging(True)
+    orwell_common.logging.configure_logging(True)
     import sys
     argc = len(sys.argv)
     if argc > 1:
