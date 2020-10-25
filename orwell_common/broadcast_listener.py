@@ -1,9 +1,10 @@
 import logging
-import threading
 import socket
+import threading
 
+import orwell_common.logging
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__.replace("orwell_common", "orwell.common"))
 
 
 class BroadcastListener(threading.Thread):
@@ -75,22 +76,8 @@ class BroadcastListener(threading.Thread):
                     LOGGER.info("Tried to send response but BlockingIOError occurred")
 
 
-def configure_logging(verbose=False):
-    print("configure_logging")
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-        '%(asctime)s %(name)-12s %(levelname)-8s '
-        '%(filename)s %(lineno)d %(message)s')
-    handler.setFormatter(formatter)
-    LOGGER.addHandler(handler)
-    if verbose:
-        LOGGER.setLevel(logging.DEBUG)
-    else:
-        LOGGER.setLevel(logging.INFO)
-
-
 def main():
-    configure_logging()
+    orwell_common.logging.configure_logging()
     listener = BroadcastListener(9080)
     import sys
     argc = len(sys.argv)
