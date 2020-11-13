@@ -1,15 +1,19 @@
+import logging
 import asyncio
 import itertools
-import logging
 import netifaces
 import socket
 import struct
-
-import orwell_common.logging
+import enum
 
 LOGGER = logging.getLogger(__name__.replace("orwell_common", "orwell.common"))
 
 DEFAULT_PORT = 9080
+
+
+class Kind(enum.Enum):
+    SERVER_GAME = "ServerGame"
+    PROXY_ROBOTS = "ProxyRobots"
 
 
 class ServerGameDecoder(object):
@@ -20,6 +24,10 @@ class ServerGameDecoder(object):
         self._agent_address = None
         self._decoding_successful = False
         self._version = version
+
+    @property
+    def kind(self):
+        return Kind.SERVER_GAME
 
     @property
     def version(self):
@@ -109,6 +117,10 @@ class ProxyRobotsDecoder(object):
         self._port = None
         self._decoding_successful = False
         self._version = version
+
+    @property
+    def kind(self):
+        return Kind.PROXY_ROBOTS
 
     @property
     def version(self):
@@ -210,6 +222,22 @@ class Broadcast(object):
                 self.decode_data()
                 break
             self._group = self._get_next_group()
+
+    def send_some_broadcast_messages(self):
+        if not self._group:
+            self.reset()
+            self._received = False
+            self._group = self._get_next_group(self._found_group)
+        tries = 0
+        while (tries < self._retries) and (not self._received):
+            tries += 1
+            LOGGER.debug("Try " + str(tries) + " group: " + str(self._group))
+            self.send_one_broadcast_message()
+        if self._received:
+            self._found_group = self._group
+            self.decode_data()
+            return
+        self._group = self._get_next_group()
 
     def reset(self):
         self._ips_pool = get_network_ips()
@@ -322,32 +350,3 @@ class AsyncBroadcast(Broadcast):
             LOGGER.info('closing socket')
             self._socket.close()
             self._build_socket()
-
-
-def main():
-    orwell_common.logging.configure_logging(True)
-    import sys
-    argc = len(sys.argv)
-    if argc > 1:
-        function = sys.argv[1]
-    else:
-        function = "normal"
-    if argc > 2:
-        if "server_game" == sys.argv[2]:
-            decoder = ServerGameDecoder
-        else:
-            decoder = ProxyRobotsDecoder
-    else:
-        decoder = ProxyRobotsDecoder
-    if "normal" == function:
-        broadcast = Broadcast(decoder())
-        broadcast.send_all_broadcast_messages()
-        print(broadcast.decoder)
-    elif "async" == function:
-        broadcast = AsyncBroadcast(decoder())
-        asyncio.run(broadcast.async_send_all_broadcast_messages())
-        print(broadcast.decoder)
-
-
-if '__main__' == __name__:
-    main()
